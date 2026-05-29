@@ -138,7 +138,7 @@ public:
      * between old and new nodes.
      */
     std::pair<std::weak_ptr<NodeGroup>, std::unordered_map<GroupId, GroupId>> restoreGroup(
-        QJsonObject const &groupJson);
+        QJsonObject const &groupJson, QHash<NodeId, QJsonObject> const &nodeById = {});
 
     /**
      * @brief Returns a const reference to the mapping of existing groups.
@@ -181,6 +181,46 @@ public:
      * @param nodeId Node's id.
      */
     void removeNodeFromGroup(NodeId nodeId);
+
+    /**
+     * @brief Loads serialized item (nodes, connections and groups) into the scene.
+     * @param data Serialized scene payload.
+     * @param pastePos Reference position used when pasting content.
+     * @param usePastePos When true, places the loaded content relative to pastePos position.
+     * @return Mapping between original node UUIDs and newly created node UUIDs.
+     */
+    std::unordered_map<QUuid, QUuid> loadItems(const QByteArray &data,
+                                               QPointF pastePos,
+                                               bool usePastePos = true);
+
+    /**
+     * @brief Loads scene data from memory.
+     * @param data Serialized scene payload.
+     * @return Mapping between original node UUIDs and newly created node UUIDs.
+     */
+    std::unordered_map<QUuid, QUuid> loadFromMemory(const QByteArray &data);
+
+    /**
+     * @brief Encodes NodeId into a QUuid representation.
+     * @param nodeId Node identifier.
+     * @return QUuid carrying the binary value of nodeId.
+     */
+    QUuid encodeNodeId(NodeId nodeId);
+
+    /**
+     * @brief Decodes a node QUuid into a NodeId.
+     * @param uuid QUuid containing an encoded node id.
+     * @return Decoded NodeId.
+     */
+    NodeId decodeNodeUuid(QUuid const &uuid);
+
+    /**
+     * @brief Converts a QUuid-to-QUuid map into a NodeId-to-NodeId map.
+     * @param uuidMap Map containing encoded old and new node QUuid pairs.
+     * @return Map with decoded NodeId pairs, excluding invalid entries.
+     */
+
+    std::unordered_map<NodeId, NodeId> convertMap(std::unordered_map<QUuid, QUuid> const &uuidMap);
 
 public:
     /**
