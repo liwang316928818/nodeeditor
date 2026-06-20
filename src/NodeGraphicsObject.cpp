@@ -105,7 +105,7 @@ void NodeGraphicsObject::embedQWidget()
 
         if (w->sizePolicy().verticalPolicy() & QSizePolicy::ExpandFlag) {
             unsigned int widgetHeight = geometry.size(_nodeId).height()
-                                        - geometry.captionRect(_nodeId).height();
+                                        - geometry.headerRect(_nodeId).height();
 
             // If the widget wants to use as much vertical space as possible, set
             // it to have the geom's equivalentWidgetHeight.
@@ -118,6 +118,9 @@ void NodeGraphicsObject::embedQWidget()
 
         _proxyWidget->setOpacity(1.0);
         _proxyWidget->setFlag(QGraphicsItem::ItemIgnoresParentOpacity);
+
+        // 控件初始可见性随折叠态(折叠则隐藏,避免戳出缩小后的包围盒)。
+        _proxyWidget->setVisible(!_graphModel.nodeCollapsed(_nodeId));
     }
 }
 
@@ -203,6 +206,20 @@ void NodeGraphicsObject::mousePressEvent(QGraphicsSceneMouseEvent *event)
 
     AbstractNodeGeometry &geometry = nodeScene()->nodeGeometry();
 
+    // 折叠三角形命中:切换展开/折叠(最高优先级,仅次于锁定判定)。
+    if (geometry.collapseTriangleRect(_nodeId).contains(event->pos())) {
+        bool const wasCollapsed = _graphModel.nodeCollapsed(_nodeId);
+        _graphModel.setNodeCollapsed(_nodeId, !wasCollapsed);
+        setGeometryChanged();
+        geometry.recomputeSize(_nodeId);
+        moveConnections();
+        if (_proxyWidget)
+            _proxyWidget->setVisible(wasCollapsed);
+        update();
+        event->accept();
+        return;
+    }
+
     for (PortType portToCheck : {PortType::In, PortType::Out}) {
         QPointF nodeCoord = sceneTransform().inverted().map(event->scenePos());
 
@@ -252,7 +269,8 @@ void NodeGraphicsObject::mousePressEvent(QGraphicsSceneMouseEvent *event)
         }
     }
 
-    if (_graphModel.nodeFlags(_nodeId) & NodeFlag::Resizable) {
+    if ((_graphModel.nodeFlags(_nodeId) & NodeFlag::Resizable)
+        && !_graphModel.nodeCollapsed(_nodeId)) {
         auto pos = event->pos();
         bool const hit = geometry.resizeHandleRect(_nodeId).contains(QPoint(pos.x(), pos.y()));
         _nodeState.setResizing(hit);
@@ -424,6 +442,7 @@ void NodeGraphicsObject::hoverMoveEvent(QGraphicsSceneHoverEvent *event)
     AbstractNodeGeometry &geometry = nodeScene()->nodeGeometry();
 
     if ((_graphModel.nodeFlags(_nodeId) | NodeFlag::Resizable)
+        && !_graphModel.nodeCollapsed(_nodeId)
         && geometry.resizeHandleRect(_nodeId).contains(QPoint(pos.x(), pos.y()))) {
         setCursor(QCursor(Qt::SizeFDiagCursor));
     } else {

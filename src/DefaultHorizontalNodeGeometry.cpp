@@ -2,6 +2,8 @@
 
 #include "AbstractGraphModel.hpp"
 #include "NodeData.hpp"
+#include "NodeStyle.hpp"
+#include "StyleCollection.hpp"
 
 #include <QPoint>
 #include <QRect>
@@ -14,12 +16,8 @@ DefaultHorizontalNodeGeometry::DefaultHorizontalNodeGeometry(AbstractGraphModel 
     , _portSize(20)
     , _portSpacing(10)
     , _fontMetrics(QFont())
-    , _boldFontMetrics(QFont())
 {
-    QFont f;
-    f.setBold(true);
-    _boldFontMetrics = QFontMetrics(f);
-
+    // 端口高度取普通字体高度;粗体度量(标题用)已由基类 AbstractNodeGeometry 持有。
     _portSize = _fontMetrics.height();
 }
 
@@ -42,30 +40,50 @@ QSize DefaultHorizontalNodeGeometry::size(NodeId const nodeId) const
 
 void DefaultHorizontalNodeGeometry::recomputeSize(NodeId const nodeId) const
 {
-    unsigned int height = maxVerticalPortsExtent(nodeId);
+    // —— 横向布局尺寸:头部(常驻)+ 主体(展开时)——
+    auto const &nodeStyle = StyleCollection::nodeStyle();
+    unsigned int const headerHeight = static_cast<unsigned int>(nodeStyle.HeaderHeight);
+
+    // 头部所需最小宽度 = 三角形区 + 标题宽 + 边距(标题几何由基类 captionRect 提供)。
+    QRectF const capRect = captionRect(nodeId);
+    unsigned int const headerMinWidth = static_cast<unsigned int>(capRect.width())
+                                       + static_cast<unsigned int>(nodeStyle.ArrowSize)
+                                       + 3u * static_cast<unsigned int>(nodeStyle.ArrowPadding);
+
+    bool const collapsed = _graphModel.nodeCollapsed(nodeId);
+
+    if (collapsed) {
+        // 折叠:仅保留头部。
+        unsigned int width = headerMinWidth + 2u * _portSpacing;
+        _graphModel.setNodeData(nodeId, NodeRole::Size, QSize(width, headerHeight));
+        return;
+    }
+
+    // 展开:头部 + 主体。主体高 = 端口区垂直占高 与 内嵌控件高度的较大者。
+    unsigned int bodyHeight = maxVerticalPortsExtent(nodeId);
 
     if (auto w = _graphModel.nodeData<QWidget *>(nodeId, NodeRole::Widget)) {
-        height = std::max(height, static_cast<unsigned int>(w->height()));
+        bodyHeight = std::max(bodyHeight, static_cast<unsigned int>(w->height()));
     }
 
-    QRectF const capRect = captionRect(nodeId);
+    // 标题已进入头部;主体顶部可能有一行 label(nickname)。
     QRectF const lblRect = labelRect(nodeId);
-
-    height += capRect.height();
     if (!lblRect.isNull()) {
-        height += lblRect.height();
-        height += _portSpacing / 2;
+        bodyHeight += static_cast<unsigned int>(lblRect.height());
+        bodyHeight += _portSpacing / 2;
     }
 
-    height += _portSpacing; // space above caption
-    height += _portSpacing; // space below caption
+    bodyHeight += _portSpacing; // space above ports
+    bodyHeight += _portSpacing; // space below ports
 
     QVariant var = _graphModel.nodeData(nodeId, NodeRole::ProcessingStatus);
 
     auto processingStatusValue = var.value<int>();
 
     if (processingStatusValue != 0)
-        height += 20;
+        bodyHeight += 20;
+
+    unsigned int const height = headerHeight + bodyHeight;
 
     unsigned int inPortWidth = maxPortsTextAdvance(nodeId, PortType::In);
     unsigned int outPortWidth = maxPortsTextAdvance(nodeId, PortType::Out);
@@ -81,56 +99,55 @@ void DefaultHorizontalNodeGeometry::recomputeSize(NodeId const nodeId) const
         textWidth = std::max(textWidth, static_cast<unsigned int>(lblRect.width()));
 
     width = std::max(width, textWidth + 2 * _portSpacing);
+    width = std::max(width, headerMinWidth + 2u * _portSpacing); // 至少容得下头部
 
-    QSize size(width, height);
-
-    _graphModel.setNodeData(nodeId, NodeRole::Size, size);
+    _graphModel.setNodeData(nodeId, NodeRole::Size, QSize(width, height));
 }
 
 QPointF DefaultHorizontalNodeGeometry::portPosition(NodeId const nodeId,
                                                     PortType const portType,
                                                     PortIndex const portIndex) const
 {
+    QSize const size = _graphModel.nodeData<QSize>(nodeId, NodeRole::Size);
+    auto const &nodeStyle = StyleCollection::nodeStyle();
+    double const headerHeight = nodeStyle.HeaderHeight;
+
+    // 折叠:端口不可见,输入收拢到头部左边缘、输出收拢到右边缘。
+    if (_graphModel.nodeCollapsed(nodeId)) {
+        switch (portType) {
+        case PortType::In:
+            return QPointF(0.0, headerHeight / 2.0);
+
+        case PortType::Out:
+            return QPointF(size.width(), headerHeight / 2.0);
+
+        default:
+            return QPointF();
+        }
+    }
+
+    // 展开:主体从头部下方开始;若顶部有 label,端口区再下移 label 高度。
     unsigned int const step = _portSize + _portSpacing;
 
-    QPointF result;
-
-    double totalHeight = 0.0;
-
-    totalHeight += captionRect(nodeId).height();
-
+    double totalHeight = headerHeight + _portSpacing;
     if (_graphModel.nodeData<bool>(nodeId, NodeRole::LabelVisible)) {
         totalHeight += labelRect(nodeId).height();
         totalHeight += _portSpacing / 2.0;
     }
 
-    totalHeight += _portSpacing;
-
     totalHeight += step * portIndex;
     totalHeight += step / 2.0;
 
-    QSize size = _graphModel.nodeData<QSize>(nodeId, NodeRole::Size);
-
     switch (portType) {
-    case PortType::In: {
-        double x = 0.0;
+    case PortType::In:
+        return QPointF(0.0, totalHeight);
 
-        result = QPointF(x, totalHeight);
-        break;
-    }
-
-    case PortType::Out: {
-        double x = size.width();
-
-        result = QPointF(x, totalHeight);
-        break;
-    }
+    case PortType::Out:
+        return QPointF(size.width(), totalHeight);
 
     default:
-        break;
+        return QPointF();
     }
-
-    return result;
 }
 
 QPointF DefaultHorizontalNodeGeometry::portTextPosition(NodeId const nodeId,
@@ -161,31 +178,12 @@ QPointF DefaultHorizontalNodeGeometry::portTextPosition(NodeId const nodeId,
     return p;
 }
 
-QRectF DefaultHorizontalNodeGeometry::captionRect(NodeId const nodeId) const
-{
-    if (!_graphModel.nodeData<bool>(nodeId, NodeRole::CaptionVisible))
-        return QRect();
-
-    QString name = _graphModel.nodeData<QString>(nodeId, NodeRole::Caption);
-
-    return _boldFontMetrics.boundingRect(name);
-}
-
-QPointF DefaultHorizontalNodeGeometry::captionPosition(NodeId const nodeId) const
-{
-    QSize size = _graphModel.nodeData<QSize>(nodeId, NodeRole::Size);
-
-    QRectF cap = captionRect(nodeId);
-    QRectF lbl = labelRect(nodeId);
-
-    double y = 0.5 * _portSpacing + cap.height();
-    y += _portSpacing / 2.0 + lbl.height();
-
-    return QPointF(0.5 * (size.width() - captionRect(nodeId).width()), y);
-}
-
 QRectF DefaultHorizontalNodeGeometry::labelRect(NodeId const nodeId) const
 {
+    // 折叠态 label 随主体隐藏。
+    if (_graphModel.nodeCollapsed(nodeId))
+        return QRect();
+
     if (!_graphModel.nodeData<bool>(nodeId, NodeRole::LabelVisible))
         return QRect();
 
@@ -201,40 +199,42 @@ QRectF DefaultHorizontalNodeGeometry::labelRect(NodeId const nodeId) const
 
 QPointF DefaultHorizontalNodeGeometry::labelPosition(NodeId const nodeId) const
 {
-    QRectF cap = captionRect(nodeId);
-    QRectF lbl = labelRect(nodeId);
+    // 折叠态 label 隐藏。
+    if (_graphModel.nodeCollapsed(nodeId))
+        return QPointF();
 
-    double y = 0.5 * _portSpacing + cap.height();
-    y += _portSpacing / 2.0 + lbl.height();
+    QRectF const lbl = labelRect(nodeId);
+    if (lbl.isNull())
+        return QPointF();
 
-    if (!_graphModel.nodeData<bool>(nodeId, NodeRole::CaptionVisible)) {
-        return QPointF(captionPosition(nodeId).x()
-                           + 0.5 * (captionRect(nodeId).width() - 2 * labelRect(nodeId).width()),
-                       y);
-    }
+    QSize const size = _graphModel.nodeData<QSize>(nodeId, NodeRole::Size);
+    double const headerHeight = StyleCollection::nodeStyle().HeaderHeight;
 
-    return QPointF(captionPosition(nodeId).x()
-                       + 0.5 * (captionRect(nodeId).width() - 2 * labelRect(nodeId).width()),
-                   0.5 * _portSpacing + captionRect(nodeId).height());
+    // label 画在头部下方、主体顶部,水平居中。
+    double const y = headerHeight + _portSpacing / 2.0 + lbl.height();
+    double const x = 0.5 * (size.width() - lbl.width());
+
+    return QPointF(x, y);
 }
 
 QPointF DefaultHorizontalNodeGeometry::widgetPosition(NodeId const nodeId) const
 {
     QSize size = _graphModel.nodeData<QSize>(nodeId, NodeRole::Size);
 
-    unsigned int captionHeight = captionRect(nodeId).height();
+    // 内嵌控件放在头部之下的主体区;若顶部有 label,再下移 label 高度。
+    unsigned int topOffset = static_cast<unsigned int>(StyleCollection::nodeStyle().HeaderHeight);
     if (_graphModel.nodeData<bool>(nodeId, NodeRole::LabelVisible))
-        captionHeight += labelRect(nodeId).height() + _portSpacing / 2;
+        topOffset += static_cast<unsigned int>(labelRect(nodeId).height()) + _portSpacing / 2;
 
     if (auto w = _graphModel.nodeData<QWidget *>(nodeId, NodeRole::Widget)) {
         // If the widget wants to use as much vertical space as possible,
-        // place it immediately after the caption.
+        // place it immediately below the header.
         if (w->sizePolicy().verticalPolicy() & QSizePolicy::ExpandFlag) {
             return QPointF(2.0 * _portSpacing + maxPortsTextAdvance(nodeId, PortType::In),
-                           _portSpacing + captionHeight);
+                           topOffset);
         } else {
             return QPointF(2.0 * _portSpacing + maxPortsTextAdvance(nodeId, PortType::In),
-                           (captionHeight + size.height() - w->height()) / 2.0);
+                           (topOffset + size.height() - w->height()) / 2.0);
         }
     }
     return QPointF();

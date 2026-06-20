@@ -340,6 +340,19 @@ NodeFlags DataFlowGraphModel::nodeFlags(NodeId nodeId) const
     return NodeFlag::NoFlags;
 }
 
+bool DataFlowGraphModel::nodeCollapsed(NodeId const nodeId) const
+{
+    return _collapsedNodes.count(nodeId) > 0;
+}
+
+void DataFlowGraphModel::setNodeCollapsed(NodeId const nodeId, bool const collapsed)
+{
+    if (collapsed)
+        _collapsedNodes.insert(nodeId);
+    else
+        _collapsedNodes.erase(nodeId);
+}
+
 bool DataFlowGraphModel::setNodeData(NodeId nodeId, NodeRole role, QVariant value)
 {
     Q_UNUSED(nodeId);
@@ -535,6 +548,7 @@ bool DataFlowGraphModel::deleteNode(NodeId const nodeId)
     _labels.erase(nodeId);
     _labelsVisible.erase(nodeId);
     _models.erase(nodeId);
+    _collapsedNodes.erase(nodeId);
 
     Q_EMIT nodeDeleted(nodeId);
 

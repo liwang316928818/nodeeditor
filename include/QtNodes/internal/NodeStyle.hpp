@@ -78,6 +78,13 @@ public:
 
     float Opacity;
 
+    // 节点头部/折叠标记(本工程自定义扩展,不参与 JSON 读写,使用类内默认值)
+    QColor HeaderColor = {50, 50, 50};        // 头部背景色
+    QColor HeaderTextColor = {255, 255, 255}; // 头部标题色
+    int HeaderHeight = 24;                    // 头部固定高度
+    int ArrowSize = 10;                       // 折叠箭头大小
+    int ArrowPadding = 5;                     // 箭头边距
+
     // Status icons - initialized in constructor after Q_INIT_RESOURCE
     QIcon statusUpdated;
     QIcon statusProcessing;

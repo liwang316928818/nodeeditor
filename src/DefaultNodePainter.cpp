@@ -1,5 +1,8 @@
 #include "DefaultNodePainter.hpp"
 
+#include <QtGui/QPainterPath>
+#include <QtGui/QPolygonF>
+
 #include "AbstractGraphModel.hpp"
 #include "AbstractNodeGeometry.hpp"
 #include "BasicGraphicsScene.hpp"
@@ -19,29 +22,36 @@ namespace QtNodes {
 
 void DefaultNodePainter::paint(QPainter *painter, NodeGraphicsObject &ngo) const
 {
-    // TODO?
-    //AbstractNodeGeometry & geometry = ngo.nodeScene()->nodeGeometry();
-    //geometry.recomputeSizeIfFontChanged(painter->font());
+    AbstractGraphModel &model = ngo.graphModel();
+    NodeId const nodeId = ngo.nodeId();
+    bool const collapsed = model.nodeCollapsed(nodeId);
 
+    // 绘制顺序:主体 → 头部色条 → 折叠三角 → 头部标题;主体内容仅展开时绘制。
     drawNodeRect(painter, ngo);
 
-    drawConnectionPoints(painter, ngo);
+    drawHeader(painter, ngo);
 
-    drawFilledConnectionPoints(painter, ngo);
+    drawCollapseArrow(painter, ngo);
 
     drawNodeCaption(painter, ngo);
 
-    drawEntryLabels(painter, ngo);
+    if (!collapsed) {
+        drawConnectionPoints(painter, ngo);
 
-    drawProcessingIndicator(painter, ngo);
+        drawFilledConnectionPoints(painter, ngo);
 
-    drawResizeRect(painter, ngo);
+        drawEntryLabels(painter, ngo);
 
-    drawNodeLabel(painter, ngo);
+        drawResizeRect(painter, ngo);
 
-    drawValidationIcon(painter, ngo);
+        drawNodeLabel(painter, ngo);
 
-    drawProgressValue(painter, ngo);
+        drawProcessingIndicator(painter, ngo);
+
+        drawProgressValue(painter, ngo);
+
+        drawValidationIcon(painter, ngo);
+    }
 }
 
 void DefaultNodePainter::drawNodeRect(QPainter *painter, NodeGraphicsObject &ngo) const
@@ -91,6 +101,9 @@ void DefaultNodePainter::drawNodeRect(QPainter *painter, NodeGraphicsObject &ngo
 
     if (invalid) {
         painter->setBrush(color);
+    } else if (model.nodeCollapsed(nodeId)) {
+        // 折叠:整块用头部色填充。
+        painter->setBrush(nodeStyle.HeaderColor);
     } else {
         QLinearGradient gradient(QPointF(0.0, 0.0), QPointF(2.0, size.height()));
         gradient.setColorAt(0.0, nodeStyle.GradientColor0);
@@ -105,6 +118,75 @@ void DefaultNodePainter::drawNodeRect(QPainter *painter, NodeGraphicsObject &ngo
     double const radius = 3.0;
 
     painter->drawRoundedRect(boundary, radius, radius);
+}
+
+void DefaultNodePainter::drawHeader(QPainter *painter, NodeGraphicsObject &ngo) const
+{
+    // 展开时在节点顶部覆盖 HeaderColor 色条(用圆角外轮廓裁剪);折叠时整块已是头部色,跳过。
+    AbstractGraphModel &model = ngo.graphModel();
+
+    NodeId const nodeId = ngo.nodeId();
+
+    if (model.nodeCollapsed(nodeId))
+        return;
+
+    AbstractNodeGeometry &geometry = ngo.nodeScene()->nodeGeometry();
+
+    QSize const size = geometry.size(nodeId);
+
+    QJsonDocument json = QJsonDocument::fromVariant(model.nodeData(nodeId, NodeRole::Style));
+
+    NodeStyle nodeStyle(json.object());
+
+    QRectF const header = geometry.headerRect(nodeId);
+
+    double const radius = 3.0;
+    QPainterPath clipPath;
+    clipPath.addRoundedRect(QRectF(0, 0, size.width(), size.height()), radius, radius);
+
+    painter->save();
+    painter->setClipPath(clipPath);
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(nodeStyle.HeaderColor);
+    painter->drawRect(header);
+    painter->restore();
+}
+
+void DefaultNodePainter::drawCollapseArrow(QPainter *painter, NodeGraphicsObject &ngo) const
+{
+    // 折叠三角形:展开▼(顶点朝下)/ 折叠▲(顶点朝上)。位置取自 collapseTriangleRect。
+    AbstractGraphModel &model = ngo.graphModel();
+
+    NodeId const nodeId = ngo.nodeId();
+
+    AbstractNodeGeometry &geometry = ngo.nodeScene()->nodeGeometry();
+
+    QJsonDocument json = QJsonDocument::fromVariant(model.nodeData(nodeId, NodeRole::Style));
+
+    NodeStyle nodeStyle(json.object());
+
+    bool const collapsed = model.nodeCollapsed(nodeId);
+
+    QRectF const box = geometry.collapseTriangleRect(nodeId);
+
+    double const cx = box.center().x();
+    double const cy = box.center().y();
+    double const half = nodeStyle.ArrowSize / 2.0;
+
+    QPolygonF triangle;
+    if (collapsed) {
+        // 朝上 ▲
+        triangle << QPointF(cx, cy - half) << QPointF(cx - half, cy + half)
+                 << QPointF(cx + half, cy + half);
+    } else {
+        // 朝下 ▼
+        triangle << QPointF(cx - half, cy - half) << QPointF(cx + half, cy - half)
+                 << QPointF(cx, cy + half);
+    }
+
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(nodeStyle.HeaderTextColor);
+    painter->drawPolygon(triangle);
 }
 
 void DefaultNodePainter::drawConnectionPoints(QPainter *painter, NodeGraphicsObject &ngo) const
@@ -250,7 +332,7 @@ void DefaultNodePainter::drawNodeCaption(QPainter *painter, NodeGraphicsObject &
     NodeStyle nodeStyle(json.object());
 
     painter->setFont(f);
-    painter->setPen(nodeStyle.FontColor);
+    painter->setPen(nodeStyle.HeaderTextColor); // 标题在深色头部,用头部标题色
     painter->drawText(position, name);
 
     f.setBold(false);
@@ -260,6 +342,7 @@ void DefaultNodePainter::drawNodeCaption(QPainter *painter, NodeGraphicsObject &
 
 void DefaultNodePainter::drawNodeLabel(QPainter *painter, NodeGraphicsObject &ngo) const
 {
+    // label(nickname)画在头部下方的主体顶部(位置取自 geometry.labelPosition)。
     AbstractGraphModel &model = ngo.graphModel();
     NodeId const nodeId = ngo.nodeId();
     AbstractNodeGeometry &geometry = ngo.nodeScene()->nodeGeometry();
@@ -276,14 +359,12 @@ void DefaultNodePainter::drawNodeLabel(QPainter *painter, NodeGraphicsObject &ng
     QFontMetricsF metrics(f);
 
     QRectF bounding = metrics.boundingRect(nickname);
-    QRectF capRect = geometry.captionRect(nodeId);
-    QPointF capPos = geometry.captionPosition(nodeId);
-    double centerX = capPos.x() + capRect.width() / 2.0;
 
-    double textHeight = metrics.height();
-    double y = capPos.y() - textHeight - 2.0;
+    // 水平居中于节点;垂直取自几何层 labelPosition(头部下方基线)。
+    QSize const size = geometry.size(nodeId);
+    QPointF const pos = geometry.labelPosition(nodeId);
 
-    QPointF position(centerX - bounding.width() / 2.0, y);
+    QPointF position(0.5 * size.width() - bounding.width() / 2.0, pos.y());
 
     QJsonDocument json = QJsonDocument::fromVariant(model.nodeData(nodeId, NodeRole::Style));
     NodeStyle nodeStyle(json.object());

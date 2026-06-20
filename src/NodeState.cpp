@@ -1,5 +1,6 @@
 #include "NodeState.hpp"
 
+#include "AbstractGraphModel.hpp"
 #include "ConnectionGraphicsObject.hpp"
 #include "NodeGraphicsObject.hpp"
 
@@ -37,6 +38,16 @@ void NodeState::storeConnectionForReaction(ConnectionGraphicsObject const *cgo)
 void NodeState::resetConnectionForReaction()
 {
     _connectionForReaction.clear();
+}
+
+bool NodeState::isCollapsed() const
+{
+    return _ngo.graphModel().nodeCollapsed(_ngo.nodeId());
+}
+
+void NodeState::setCollapsed(bool c)
+{
+    _ngo.graphModel().setNodeCollapsed(_ngo.nodeId(), c);
 }
 
 } // namespace QtNodes

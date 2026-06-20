@@ -37,6 +37,11 @@ public:
 
     void resetConnectionForReaction();
 
+    // 折叠状态访问器:转发到 GraphModel(单一数据源,见 AbstractGraphModel::nodeCollapsed)。
+    bool isCollapsed() const;
+
+    void setCollapsed(bool c);
+
 private:
     NodeGraphicsObject &_ngo;
 
