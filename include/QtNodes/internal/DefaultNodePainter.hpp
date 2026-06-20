@@ -4,6 +4,8 @@
 #include "Definitions.hpp"
 #include <QIcon>
 #include <QtGui/QPainter>
+#include <QtGui/QPainterPath>
+#include <QtGui/QPolygonF>
 
 namespace QtNodes {
 
@@ -20,6 +22,10 @@ public:
     void paint(QPainter *painter, NodeGraphicsObject &ngo) const override;
 
     void drawNodeRect(QPainter *painter, NodeGraphicsObject &ngo) const;
+
+    void drawHeader(QPainter *painter, NodeGraphicsObject &ngo) const;
+
+    void drawCollapseArrow(QPainter *painter, NodeGraphicsObject &ngo) const;
 
     void drawConnectionPoints(QPainter *painter, NodeGraphicsObject &ngo) const;
 

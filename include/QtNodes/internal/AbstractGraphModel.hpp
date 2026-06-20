@@ -115,6 +115,24 @@ public:
         return NodeFlag::NoFlags;
     }
 
+    /// @brief 节点是否处于“折叠”状态(仅显示头部、隐藏主体)。
+    /**
+     * 默认实现始终返回 false。派生类(如 DataFlowGraphModel)可覆盖以真正存储/查询
+     * 折叠态。放在模型层,是为了让“几何/画笔/交互”三处共享同一数据源(单一真相)。
+     */
+    virtual bool nodeCollapsed(NodeId const nodeId) const
+    {
+        Q_UNUSED(nodeId);
+        return false;
+    }
+
+    /// @brief 设置节点折叠状态。默认空操作;派生类可覆盖(本库默认不写入存档)。
+    virtual void setNodeCollapsed(NodeId const nodeId, bool const collapsed)
+    {
+        Q_UNUSED(nodeId);
+        Q_UNUSED(collapsed);
+    }
+
     /**
      * @brief Sets node properties.
      *

@@ -29,10 +29,6 @@ public:
                              PortType const portType,
                              PortIndex const PortIndex) const override;
 
-    QPointF captionPosition(NodeId const nodeId) const override;
-
-    QRectF captionRect(NodeId const nodeId) const override;
-
     QPointF labelPosition(const NodeId nodeId) const override;
 
     QRectF labelRect(NodeId const nodeId) const override;
@@ -61,7 +57,6 @@ private:
     mutable unsigned int _portSize;
     unsigned int _portSpacing;
     mutable QFontMetrics _fontMetrics;
-    mutable QFontMetrics _boldFontMetrics;
 };
 
 } // namespace QtNodes

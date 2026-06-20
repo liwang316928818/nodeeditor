@@ -3,6 +3,8 @@
 #include "Definitions.hpp"
 #include "Export.hpp"
 
+#include <QFont>
+#include <QFontMetrics>
 #include <QRectF>
 #include <QSize>
 #include <QTransform>
@@ -53,10 +55,16 @@ public:
    * Defines where to start drawing the caption. The point corresponds to a font
    * baseline.
    */
-    virtual QPointF captionPosition(NodeId const nodeId) const = 0;
+    QPointF captionPosition(NodeId const nodeId) const;
 
-    /// Caption rect is needed for estimating the total node size.
-    virtual QRectF captionRect(NodeId const nodeId) const = 0;
+    /// Caption rect (画在头部内,用粗体度量估算)。
+    QRectF captionRect(NodeId const nodeId) const;
+
+    /// 头部矩形:节点顶部一条贯穿宽度的横栏,高度=NodeStyle::HeaderHeight。
+    QRectF headerRect(NodeId const nodeId) const;
+
+    /// 折叠三角形的"可点击包围盒"(画笔与点击判定共用同一矩形,零漂移)。
+    QRectF collapseTriangleRect(NodeId const nodeId) const;
 
     /**
    * Defines where to start drawing the label. The point corresponds to a font
@@ -80,6 +88,9 @@ public:
 
 protected:
     AbstractGraphModel &_graphModel;
+
+    // 粗体字体度量,用于估算头部标题尺寸;标 mutable:重算度量不改几何对象的逻辑 const 性。
+    mutable QFontMetrics _boldFontMetrics;
 };
 
 } // namespace QtNodes

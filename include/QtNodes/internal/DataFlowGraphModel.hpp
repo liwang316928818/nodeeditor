@@ -57,6 +57,10 @@ public:
 
     NodeFlags nodeFlags(NodeId nodeId) const override;
 
+    bool nodeCollapsed(NodeId const nodeId) const override;
+
+    void setNodeCollapsed(NodeId const nodeId, bool const collapsed) override;
+
     bool setNodeData(NodeId nodeId, NodeRole role, QVariant value) override;
 
     QVariant portData(NodeId nodeId,
@@ -142,6 +146,8 @@ private:
 
     std::unordered_map<NodeId, QString> _labels;
     std::unordered_map<NodeId, bool> _labelsVisible;
+
+    std::unordered_set<NodeId> _collapsedNodes; ///< 处于折叠状态的节点集合(视图态,不入存档)
 };
 
 } // namespace QtNodes
